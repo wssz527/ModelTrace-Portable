@@ -102,6 +102,7 @@ function summary() {
 function persistProviders() {
   const remember = byId('remember-key').checked;
   storage.setItem('providers', JSON.stringify(providers.map(p => ({ ...p, api_key: remember ? p.api_key : '' }))));
+  storage.setItem('remember-key', remember ? '1' : '0');
 }
 
 function endpoint(base, kind) {
@@ -339,6 +340,7 @@ function renderBank() {
 }
 
 function initialize() {
+  byId('remember-key').checked = storage.getItem('remember-key') === '1';
   extensionConnector.initialize();
   renderBank();
   byId('upstream-url').value = bankMeta.upstream || UPSTREAM;

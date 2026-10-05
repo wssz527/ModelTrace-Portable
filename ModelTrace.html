@@ -475,8 +475,8 @@ tbody tr.winner { background: var(--primary-soft); }
             <label><span>温度（可选）</span><input id="conn-temperature" type="number" min="0" max="2" step="0.1" placeholder="接口默认"></label>
             <label><span>思考强度</span>
               <select id="conn-thinking">
-                <option value="low" selected>低（默认·省 token）</option>
-                <option value="">不发送（跟随渠道默认）</option>
+                <option value="" selected>不发送（默认）</option>
+                <option value="low">低</option>
                 <option value="medium">中</option>
                 <option value="high">高</option>
               </select>
@@ -1088,6 +1088,7 @@ function summary() {
 function persistProviders() {
   const remember = byId('remember-key').checked;
   storage.setItem('providers', JSON.stringify(providers.map(p => ({ ...p, api_key: remember ? p.api_key : '' }))));
+  storage.setItem('remember-key', remember ? '1' : '0');
 }
 
 function endpoint(base, kind) {
@@ -1325,6 +1326,7 @@ function renderBank() {
 }
 
 function initialize() {
+  byId('remember-key').checked = storage.getItem('remember-key') === '1';
   extensionConnector.initialize();
   renderBank();
   byId('upstream-url').value = bankMeta.upstream || UPSTREAM;
