@@ -148,6 +148,7 @@ def build(destination: Path, private_providers: list[dict] | None = None) -> Non
     template = template.replace('自动化测试台</span>', '便携版</span>')
     template = template.replace('href="https://github.com/xqy2006/ModelTrace"', 'href="' + REPOSITORY + '"', 1)
     template = template.replace('<div class="topbar-status">', '<button id="open-guide" type="button" class="button secondary">使用指南</button><div class="topbar-status">', 1)
+    template = template.replace('</div>\n    </header>', '<button id="theme-toggle" type="button" title="切换主题">🌙</button></div>\n    </header>', 1)
     template = template.replace('{{ unified.model_count }}', '17')
     template = template.replace('自动更新 · 手动维护', '本地指纹 · 导入与导出')
     template = re.sub(r'      <div class="sidebar-note">.*?</div>\n', '', template)
@@ -167,7 +168,7 @@ def build(destination: Path, private_providers: list[dict] | None = None) -> Non
     # Model entry must also be available when /models is unsupported or blocked.
     template = template.replace('class="form-panel picker-panel" hidden', 'class="form-panel picker-panel"')
     sources = []
-    for name in ('static/fingerprint-core.js', 'static/challenge-browser.js', 'portable/extension-client.js', 'portable/portable.js'):
+    for name in ('static/theme-toggle.js', 'static/fingerprint-core.js', 'static/challenge-browser.js', 'portable/extension-client.js', 'portable/portable.js'):
         js = (PROJECT / name).read_text(encoding="utf-8")
         js = re.sub(r'^import .*?;\n', '', js, flags=re.M)
         js = re.sub(r'\bexport (?=(?:const|function|class|async)\b)', '', js)
