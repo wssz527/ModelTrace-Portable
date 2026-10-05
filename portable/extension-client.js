@@ -4,7 +4,8 @@ const extensionConnector = (() => {
   const pending = new Map();
   const connected = new Set();
   let detected = false;
-  const root = raw => { const url = new URL(raw); return url.origin + url.pathname.replace(/(models|chat\/completions|messages)$/, ''); };
+  let supportsResponses = false;
+  const root = raw => { const url = new URL(raw); return url.origin + url.pathname.replace(/(models|chat\/completions|responses|messages)$/, ''); };
   function call(type, data = {}, signal, timeout = 240000) {
     if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
     return new Promise((resolve, reject) => {
@@ -43,9 +44,16 @@ const extensionConnector = (() => {
     markSetup(true);
   }
   function closeHelp() { element('extension-help').close(); }
+  function checkSupport(url) {
+    if (supportsResponses || !(/\/responses$/.test(new URL(url).pathname) || element('conn-format').value === 'responses')) return;
+    help();
+    element('extension-setup-status').textContent = '请更新扩展：下载并覆盖原扩展文件夹 → 在扩展管理页点击重新加载 → 刷新本 HTML。';
+    throw new Error('请更新连接扩展后重新开始测试。');
+  }
   async function connect(url, signal) {
-    try { if (!detected) { await call('ping', {}, signal, 2500); detected = true; } }
+    try { if (!detected) { const reply = await call('ping', {}, signal, 2500); supportsResponses = reply.responses === true; detected = true; } }
     catch (error) { help(); throw error; }
+    checkSupport(url);
     const target = root(url) + 'models';
     await call('authorize', { url: target }, signal);
     connected.add(root(url));
@@ -54,6 +62,7 @@ const extensionConnector = (() => {
     markSetup(false);
   }
   async function request(url, options) {
+    checkSupport(url);
     const headers = Object.fromEntries(new Headers(options.headers));
     const result = await call('request', { url, method: options.method || 'GET', headers, ...(options.body != null ? { body: options.body } : {}) }, options.signal);
     if (!Number.isInteger(result.status) || result.status < 200 || result.status > 599 || typeof result.body !== 'string' || result.body.length > 10485760) throw new Error('扩展返回了无效接口响应。');
@@ -100,8 +109,10 @@ const extensionConnector = (() => {
     element('extension-check').onclick = async () => {
       const button = element('extension-check'); button.disabled = true;
       element('extension-setup-status').textContent = '正在检测扩展…';
-      try { await call('ping', {}, undefined, 2500); detected = true; }
+      try { const reply = await call('ping', {}, undefined, 2500); supportsResponses = reply.responses === true; detected = true; }
       catch { element('extension-setup-status').textContent = '未检测到扩展，请完成第 2～4 步并刷新本 HTML。'; button.disabled = false; return; }
+      try { checkSupport('http://localhost/v1/models'); }
+      catch { button.disabled = false; return; }
       closeHelp(); markSetup(false);
       const note = element('connection-status'); note.hidden = false; note.textContent = '扩展可用';
       const base = element('conn-base').value.trim(); const key = element('conn-key').value;

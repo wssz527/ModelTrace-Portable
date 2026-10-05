@@ -11,7 +11,7 @@ const ruleReady = chrome.declarativeNetRequest.updateSessionRules({
 function target(raw) {
   const url = new URL(raw);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('接口地址不受支持。');
-  const match = url.pathname.match(/^(.*\/)(models|chat\/completions|messages)$/);
+  const match = url.pathname.match(/^(.*\/)(models|chat\/completions|responses|messages)$/);
   if (!match) throw new Error('扩展仅支持模型列表和模型测试接口。');
   return { url, root: url.origin + match[1], kind: match[2] };
 }
@@ -38,7 +38,7 @@ async function readBody(response) {
 
 async function handle(message, sender) {
   const binding = owner(sender);
-  if (message.type === 'ping') { await ruleReady; return { version: chrome.runtime.getManifest().version }; }
+  if (message.type === 'ping') { await ruleReady; return { version: chrome.runtime.getManifest().version, responses: true }; }
   if (message.type === 'disconnect') {
     await chrome.storage.session.remove(binding);
     for (const [id, item] of active) if (id.startsWith(binding + ':')) item.abort();
@@ -67,7 +67,8 @@ async function handle(message, sender) {
   if (method === 'POST') {
     if (typeof message.body !== 'string' || message.body.length > 1048576) throw new Error('测试正文不正确或超过 1 MB。');
     const body = JSON.parse(message.body);
-    if (typeof body.model !== 'string' || !body.model || !Array.isArray(body.messages) || body.stream !== false) throw new Error('扩展只接受非流式模型测试。');
+    const input = kind === 'responses' ? (Array.isArray(body.input) && body.input.length > 0 && body.store === false) : Array.isArray(body.messages);
+    if (typeof body.model !== 'string' || !body.model || !input || body.stream !== false) throw new Error('扩展只接受非流式模型测试。');
   }
   if (typeof message.id !== 'string' || message.id.length > 100) throw new Error('请求标识不正确。');
   await ruleReady;

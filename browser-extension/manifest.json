@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ModelTrace 连接扩展",
   "description": "连接 ModelTrace HTML 与 API。",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://*/*", "http://*/*"],

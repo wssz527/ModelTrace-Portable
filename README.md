@@ -10,7 +10,7 @@
 2. 填写自己的 Base URL 和 API Key，点击“拉取模型”。
 3. 勾选模型，点击“开始测试”，勾选“第 1 轮”。需要时继续下一轮，或选择“自动跑到收敛”。
 
-支持 OpenAI Chat Completions 和 Anthropic Messages 接口。不提供模型列表的接口可手动添加模型名。
+支持 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages 接口。不提供模型列表的接口可手动添加模型名。
 
 思考强度默认“不发送”。需要指定时，可手动选择低、中或高。
 
@@ -20,10 +20,12 @@
 
 1. 在 CPA 或其他转换工具中启用本机 API，取得 API 地址和该工具的访问密钥。
 2. 将地址填写到 Base URL，将访问密钥填写到 API Key。
-3. 选择工具提供的 OpenAI Chat Completions 或 Anthropic Messages 格式，拉取模型并测试。
+3. 选择工具提供的接口格式；原生 `/v1/responses` 选择“OpenAI Responses”，然后拉取模型并测试。
 4. 点击“保存为提供商”，填写名称并保存，后续直接选择。
 
-本机地址支持 `http://127.0.0.1` 和 `http://localhost`；端口和路径以转换工具的设置为准。工具需提供模型列表接口 `/models`（可选）以及 `/chat/completions` 或 `/messages` 生成接口，通常位于 `/v1` 下。仅提供 Responses 接口的工具不在当前支持范围内。
+本机地址支持 `http://127.0.0.1` 和 `http://localhost`；端口和路径以转换工具的设置为准。工具需提供模型列表接口 `/models`（可选）以及 `/chat/completions`、`/responses` 或 `/messages` 生成接口，通常位于 `/v1` 下。
+
+Responses 每轮只发送本轮提示词，使用 `store: false`，不携带历史响应 ID、会话或工具上下文。当前使用非流式请求；默认仍不发送思考强度，手动选择时按原生 `reasoning.effort` 格式发送。字段定义见 [OpenAI 官方 Responses 文档](https://developers.openai.com/api/reference/resources/responses/methods/create)。
 
 订阅登录和 API 转换由用户已有的工具处理。HTML 不扫描账号登录态、不读取订阅凭据，也不调用本地 CLI。连接失败时按同一扩展弹窗处理。
 
@@ -47,6 +49,8 @@ HTML 内置指纹库、评分算法和连接扩展安装包，无需另附文件
 首次安装由用户手动确认，HTML 不会自动安装扩展。安装后保留扩展文件夹；后续仍在 HTML 中操作，无需另开程序。点击“断开扩展连接”可撤销当前页面的连接授权。
 
 扩展适用于桌面 Edge / Chrome（Chromium 120+），不适用于 Safari、手机浏览器或应用内预览。
+
+已安装旧扩展而需要 Responses 时，按更新提示下载并覆盖原扩展文件夹，在扩展管理页点击“重新加载”，然后刷新 HTML。
 
 ## 更新指纹库
 

@@ -23,6 +23,7 @@ const { chromium } = require('playwright');
     if (req.method === 'POST') requests.push({ path: req.url, body: JSON.parse(text) });
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(req.url.endsWith('/models') ? { data: [{ id: 'gpt-6-sol' }] }
+      : req.url.endsWith('/responses') ? { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: fixture }] }] }
       : req.url.endsWith('/messages') ? { content: [{ type: 'text', text: fixture }], stop_reason: 'end_turn' }
       : { choices: [{ message: { content: fixture }, finish_reason: 'stop' }] }));
   });
@@ -51,9 +52,8 @@ const { chromium } = require('playwright');
     const bank = await page.evaluate(() => JSON.parse(document.querySelector('#fingerprint-bank').textContent));
     bank.models[0].display_name = marker;
     await page.locator('[data-workspace="library"]').click();
-    let downloaded = page.waitForEvent('download');
     await page.locator('#import-bank').setInputFiles({ name: 'bank.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(bank)) });
-    await (await downloaded).path();
+    await page.waitForFunction(marker => document.querySelector('#portable-bank-models').textContent.includes(marker), marker);
     await context.close();
 
     await open();
@@ -63,17 +63,22 @@ const { chromium } = require('playwright');
     assert.ok((await page.locator('#portable-bank-models').textContent()).includes(marker));
     assert.equal(await page.locator('.test-card').count(), 0);
     await page.locator('#conn-key').fill(key);
-    for (const format of ['openai', 'anthropic']) {
+    for (const format of ['openai', 'anthropic', 'responses']) {
       await page.locator('#conn-format').selectOption(format);
       await page.locator('#manual-model-name').fill('gpt-6-sol'); await page.locator('#manual-model-add').click();
       await page.locator('#start-tests').click(); await page.locator('.test-card input[data-round="0"]').check();
       await page.locator('.card-result').waitFor({ state: 'visible' });
-      assert.ok(!Object.hasOwn(requests.at(-1).body, 'reasoning_effort'), 'Default must omit the reasoning parameter in both API formats');
+      assert.ok(!Object.hasOwn(requests.at(-1).body, 'reasoning_effort') && !Object.hasOwn(requests.at(-1).body, 'reasoning'), 'Default must omit the reasoning parameter in all API formats');
+      if (format === 'responses') {
+        assert.equal(requests.at(-1).path, '/v1/responses');
+        assert.equal(requests.at(-1).body.store, false); assert.equal(requests.at(-1).body.input.length, 1);
+        assert.ok(!Object.hasOwn(requests.at(-1).body, 'previous_response_id'));
+      }
     }
     await page.locator('.card-remove').click(); await page.locator('#conn-thinking').selectOption('low');
     await page.locator('#start-tests').click(); await page.locator('.test-card input[data-round="0"]').check();
     await page.locator('.card-result').waitFor({ state: 'visible' });
-    assert.equal(requests.at(-1).body.reasoning_effort, 'low');
+    assert.equal(requests.at(-1).body.reasoning.effort, 'low');
     await page.locator('#remember-key').check(); await saveProvider();
     await context.close();
 
@@ -82,9 +87,8 @@ const { chromium } = require('playwright');
     assert.equal(await page.locator('#remember-key').isChecked(), true);
     assert.equal(await page.locator('#conn-thinking').inputValue(), '');
     await page.locator('[data-workspace="library"]').click();
-    downloaded = page.waitForEvent('download'); await page.locator('#download-share').click();
-    const sharedFile = path.join(temporary, 'Shared.html'); fs.copyFileSync(await (await downloaded).path(), sharedFile);
-    const shared = fs.readFileSync(sharedFile, 'utf8');
+    const shared = await page.evaluate(() => window.ModelTracePortable.shareHTML());
+    const sharedFile = path.join(temporary, 'Shared.html'); fs.writeFileSync(sharedFile, shared);
     for (const secret of [key, name, base]) assert.ok(!shared.includes(secret));
     assert.ok(shared.includes(marker));
     await page.locator('[data-workspace="test"]').click(); await page.locator('#remember-key').uncheck();

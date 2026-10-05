@@ -28,6 +28,7 @@ async function main() {
   const fixtures = JSON.parse(fs.readFileSync(process.env.MODELTRACE_FIXTURES || path.join(__dirname, 'fixtures.json'), 'utf8'));
   const records = [];
   let failGeneration = false;
+  let nativeStatus = 'completed';
   const server = http.createServer(async (req, res) => {
     const isCors = req.url.startsWith('/cors/') || (req.url.startsWith('/mixed/') && req.url.endsWith('/models'));
     if (isCors) {
@@ -44,6 +45,12 @@ async function main() {
     if (req.url.startsWith('/reject/')) { res.writeHead(401); res.end(JSON.stringify({ error: { message: 'Rejected sk-mock-extension' } })); return; }
     if (req.url.endsWith('/models')) { res.end('{"data":[{"id":"gpt-6-sol"}]}'); return; }
     if (failGeneration && req.method === 'POST') { res.writeHead(503); res.end('{"error":{"message":"Test failure"}}'); return; }
+    if (req.url.endsWith('/responses')) {
+      res.end(JSON.stringify({ status: nativeStatus, output: [
+        { type: 'reasoning', summary: [{ type: 'summary_text', text: '355 355 355' }] },
+        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: fixtures.outputs[0].text }] },
+      ] })); return;
+    }
     if (req.url.startsWith('/slow/')) await new Promise(resolve => setTimeout(resolve, 35000));
     const text = fixtures.outputs[0].text;
     res.end(JSON.stringify(req.url.endsWith('/messages') ? { content: [{ type: 'text', text }], stop_reason: 'end_turn' } : { choices: [{ message: { content: text }, finish_reason: 'stop' }] }));
@@ -91,6 +98,23 @@ async function main() {
     assert.equal(generated[0].origin, null); assert.equal(JSON.parse(generated[0].body).stream, false);
     assert.equal(JSON.parse(generated[0].body).messages.length, 1);
     assert.equal(await page.locator('#modeltrace-extension-consent').count(), 0);
+    await page.locator('#conn-format').selectOption('responses');
+    await page.locator('#manual-model-name').fill('gpt-6-sol'); await page.locator('#manual-model-add').click();
+    await page.locator('#start-tests').click(); await page.locator('.test-card input[data-round="0"]').check();
+    await page.locator('.test-card .card-result').waitFor({ state: 'visible' });
+    const native = records.find(x => x.path === '/blocked/v1/responses' && x.method === 'POST');
+    assert.ok(native); assert.equal(native.origin, null);
+    const nativeBody = JSON.parse(native.body);
+    assert.equal(nativeBody.store, false); assert.equal(nativeBody.stream, false); assert.equal(nativeBody.input.length, 1);
+    assert.equal(nativeBody.input[0].role, 'user'); assert.equal(nativeBody.input[0].content[0].type, 'input_text');
+    assert.ok(!Object.hasOwn(nativeBody, 'reasoning') && !Object.hasOwn(nativeBody, 'previous_response_id'));
+    assert.equal(await page.locator('.io-text').first().textContent(), fixtures.outputs[0].text, 'Reasoning items must not enter fingerprint scoring');
+    nativeStatus = 'incomplete';
+    await page.locator('.card-reset').click(); await page.locator('.test-card input[data-round="0"]').check();
+    await page.waitForFunction(() => document.querySelector('.round-state').textContent.includes('未完整生成'));
+    assert.equal(await page.locator('.card-result').isVisible(), false);
+    nativeStatus = 'completed';
+    await page.locator('#conn-format').selectOption('auto');
     const session = await worker.evaluate(() => chrome.storage.session.get(null));
     assert.ok(!JSON.stringify(session).includes('sk-mock-extension'), 'Extension must not store keys');
 
@@ -163,7 +187,21 @@ async function main() {
     await page.locator('.stability-summary').waitFor({ state: 'visible' });
     assert.equal(records.filter(x => x.method === 'POST').length - beforeFailure, 2, 'Each requested trial must stop after its first API error');
     assert.deepEqual(errors, []);
+    const oldPage = await context.newPage();
+    await oldPage.addInitScript(() => window.addEventListener('message', event => {
+      if (event.data?.bridge === 'modeltrace-extension-v1' && event.data.to === 'page' && event.data.result?.responses === true) event.data.result.responses = false;
+    }, true));
+    await oldPage.goto(pathToFileURL(process.env.MODELTRACE_HTML || path.join(project, 'ModelTrace.html')).href);
+    await oldPage.locator('#conn-base').fill(base + '/blocked'); await oldPage.locator('#conn-key').fill('sk-mock-extension');
+    await oldPage.locator('#conn-format').selectOption('responses');
+    const beforeUpgrade = records.filter(x => x.method === 'POST').length;
+    await oldPage.locator('#conn-form button[type=submit]').click();
+    await oldPage.waitForFunction(() => document.querySelector('#extension-setup-status').textContent.includes('更新扩展'));
+    assert.equal(await oldPage.locator('#extension-help').isVisible(), true);
+    assert.equal(records.filter(x => x.method === 'POST').length, beforeUpgrade, 'Old extension must trigger upgrade guidance without a generation request');
+    await oldPage.close();
     console.log('PASS: local HTML + real MV3 extension: explicit consent, no key before consent, CORS/Origin/CSP blocked API, GET/OpenAI/Messages, 35-second response, direct-first route, no paid replay, disconnect, secret-free extension session and clean HTML export.');
+    console.log('PASS: native Responses, stateless request, no reasoning in scoring, incomplete output rejected, and old-extension upgrade guidance.');
 
     if (process.env.MODELTRACE_LIVE_CONFIG) {
       const providers = JSON.parse(fs.readFileSync(process.env.MODELTRACE_LIVE_CONFIG, 'utf8'));

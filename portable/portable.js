@@ -109,7 +109,7 @@ function endpoint(base, kind) {
   let url;
   try { url = new URL(base); } catch { throw new Error('Base URL 必须是完整的 http:// 或 https:// 地址。'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Base URL 仅支持不带账号、查询参数的 HTTP(S) 地址。');
-  let path = url.pathname.replace(/\/$/, '').replace(/\/(chat\/completions|messages|models)$/, '');
+  let path = url.pathname.replace(/\/$/, '').replace(/\/(chat\/completions|responses|messages|models)$/, '');
   if (!path.endsWith('/v1')) path += '/v1';
   url.pathname = `${path}/${kind}`;
   return url.href;
@@ -143,17 +143,31 @@ async function requestJSON(url, options, key, timeout = 240000) {
 }
 
 async function completion(conn, prompt) {
-  const formats = conn.api_format === 'auto' || !conn.api_format ? ['openai', 'anthropic'] : [conn.api_format];
+  const formats = conn.api_format === 'auto' || !conn.api_format ? ['openai', 'anthropic', 'responses'] : [conn.api_format];
   for (let i = 0; i < formats.length; i++) {
     const format = formats[i];
-    const body = { model: conn.api_model, messages: [{ role: 'user', content: prompt }], stream: false };
+    const body = format === 'responses'
+      ? { model: conn.api_model, input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }], stream: false, store: false }
+      : { model: conn.api_model, messages: [{ role: 'user', content: prompt }], stream: false };
     const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${conn.api_key}` };
     if (format === 'anthropic') { body.max_tokens = 4096; headers['x-api-key'] = conn.api_key; headers['anthropic-version'] = '2023-06-01'; headers['anthropic-dangerous-direct-browser-access'] = 'true'; }
     if (conn.temperature != null) body.temperature = conn.temperature;
-    if (conn.thinking) body.reasoning_effort = conn.thinking;
+    if (conn.thinking) {
+      if (format === 'responses') body.reasoning = { effort: conn.thinking };
+      else body.reasoning_effort = conn.thinking;
+    }
     let payload;
-    try { payload = await requestJSON(endpoint(conn.base_url, format === 'anthropic' ? 'messages' : 'chat/completions'), { method: 'POST', headers, body: JSON.stringify(body) }, conn.api_key, 240000); }
+    try { payload = await requestJSON(endpoint(conn.base_url, format === 'anthropic' ? 'messages' : format === 'responses' ? 'responses' : 'chat/completions'), { method: 'POST', headers, body: JSON.stringify(body) }, conn.api_key, 240000); }
     catch (error) { if (i + 1 < formats.length && [404, 405, 415, 501].includes(error.status)) continue; throw error; }
+    if (format === 'responses') {
+      if (payload.status && payload.status !== 'completed') throw new Error('模型回答未完整生成，本轮不计入。');
+      if (!Array.isArray(payload.output)) throw new Error('接口没有返回有效的 Responses 回答。');
+      const content = payload.output.filter(item => item.type === 'message').flatMap(item => Array.isArray(item.content) ? item.content : []);
+      if (content.some(item => item.type === 'refusal')) throw new Error('模型拒答，本轮不计入。');
+      const text = content.filter(item => item.type === 'output_text' && typeof item.text === 'string').map(item => item.text).join('');
+      if (!text.trim()) throw new Error('接口没有返回模型回答；请检查接口格式。');
+      return text;
+    }
     if (['max_tokens', 'refusal'].includes(payload.stop_reason)) throw new Error('模型拒答或输出被截断，本轮不计入。');
     if (payload.content) return payload.content.filter(x => x.type === 'text').map(x => x.text).join('');
     const choice = payload.choices?.[0];
