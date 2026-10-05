@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "ModelTrace 连接扩展",
+  "description": "连接 ModelTrace HTML 与 API。",
+  "version": "1.0.1",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "declarativeNetRequestWithHostAccess"],
+  "host_permissions": ["https://*/*", "http://*/*"],
+  "background": {"service_worker": "background.js"},
+  "content_scripts": [{"matches": ["file:///*"], "js": ["content.js"], "run_at": "document_idle"}]
+}

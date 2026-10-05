@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ModelTrace</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='repository-link.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='studio.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="product-name"><span class="product-mark">MT</span><strong>ModelTrace</strong><span class="version">自动化测试台</span></div>
+    <div class="topbar-actions">
+      <div class="topbar-status"><span id="topbar-bank-count">{{ unified.model_count }} 个候选模型</span></div>
+      <a class="topbar-github" href="https://github.com/xqy2006/ModelTrace" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开 ModelTrace 的 GitHub 仓库" title="GitHub 仓库">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <nav aria-label="工作区">
+        <button class="nav-button active" data-workspace="test" type="button"><span class="nav-icon">01</span><span><strong>模型测试</strong><small>勾选即测 · 自动计算</small></span></button>
+        <button class="nav-button" data-workspace="library" type="button"><span class="nav-icon">02</span><span><strong>指纹库管理</strong><small>自动更新 · 手动维护</small></span></button>
+      </nav>
+      <div class="sidebar-note"><strong>渐进式测试</strong>多数模型 1–2 轮即可收敛（概率 ≥ 95%）；「多轮稳定性」模式重复多轮独立归因，专抓首测通过、复测翻转的渠道。</div>
+    </aside>
+
+    <main class="main-content">
+      <section id="workspace-test" class="workspace active">
+        <div class="page-header"><h1>模型测试</h1><div id="active-bank-badge" class="privacy-badge">{{ unified.model_count }} 个候选模型</div></div>
+
+        <form id="conn-form" class="form-panel">
+          <div class="form-grid conn-grid">
+            <label><span>提供商</span>
+              <select id="provider-select"><option value="">自定义（临时填写）</option></select>
+            </label>
+            <label><span>Base URL</span><input id="conn-base" required placeholder="https://api.example.com/v1"></label>
+            <label><span>API Key</span><input id="conn-key" type="password" required autocomplete="off" placeholder="选择提供商自动填入"></label>
+            <label><span>温度（可选）</span><input id="conn-temperature" type="number" min="0" max="2" step="0.1" placeholder="接口默认"></label>
+            <label><span>思考强度</span>
+              <select id="conn-thinking">
+                <option value="low" selected>低（默认·省 token）</option>
+                <option value="">不发送（跟随渠道默认）</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </label>
+            <div class="conn-actions">
+              <button class="button primary" type="submit">拉取模型</button>
+              <button class="button secondary" id="provider-save" type="button">保存为提供商</button>
+              <button class="button secondary danger-button" id="provider-delete" type="button" hidden>删除提供商</button>
+            </div>
+          </div>
+          <div id="provider-save-row" class="provider-save-row" hidden>
+            <input id="provider-name" placeholder="提供商名称，例如 我的接口">
+            <button id="provider-save-confirm" class="button primary" type="button">确认保存</button>
+            <button id="provider-save-cancel" class="button secondary" type="button">取消</button>
+          </div>
+        </form>
+
+        <section id="model-picker" class="form-panel picker-panel" hidden>
+          <div class="picker-toolbar">
+            <input id="model-filter" type="search" placeholder="筛选模型（忽略 - . 空格：输 5.5 也能命中 opus-5-5）…">
+            <span id="picker-count" class="picker-count">已选 0 / 0</span>
+            <button id="picker-all" class="button secondary" type="button">全选</button>
+            <button id="picker-none" class="button secondary" type="button">清空</button>
+          </div>
+          <div id="model-checklist" class="model-checklist"></div>
+          <div class="picker-manual">
+            <input id="manual-model-name" placeholder="列表没有？手动输入模型名">
+            <button id="manual-model-add" class="button secondary" type="button">添加并选中</button>
+          </div>
+        </section>
+
+        <div class="mode-tabs" role="tablist" aria-label="测试方式">
+          <button class="mode-tab active" data-test-mode="progressive" type="button">渐进单测</button>
+          <button class="mode-tab" data-test-mode="stability" type="button">多轮稳定性</button>
+          <button class="mode-tab" data-test-mode="manual" type="button">手动粘贴</button>
+        </div>
+
+        <section id="test-progressive" class="mode-panel active">
+          <div class="panel-toolbar">
+            <strong>渐进式三轮测试</strong>
+            <button id="start-tests" class="button primary" type="button">为勾选模型创建测试卡</button>
+          </div>
+          <div id="test-cards" class="test-cards"></div>
+        </section>
+
+        <section id="test-stability" class="mode-panel">
+          <div class="panel-toolbar stability-toolbar">
+            <div>
+              <strong>多轮稳定性测试</strong>
+              <span>各轮并行做渐进归因（每轮最多 3 条挑战直至收敛），不一致的轮次单独标记不影响其他轮，全部轮次判定一致才算稳定</span>
+            </div>
+            <div class="stability-config">
+              <label>轮数 <input id="stability-rounds" type="number" min="2" max="20" value="5"></label>
+              <button id="start-stability" class="button primary" type="button">开始多轮测试</button>
+            </div>
+          </div>
+          <div id="stability-cards" class="test-cards"></div>
+        </section>
+
+        <section id="test-manual" class="mode-panel">
+          <div class="panel-toolbar">
+            <strong>三次挑战（手动模式）</strong>
+            <button id="manual-generate" class="button secondary" type="button">生成挑战</button>
+          </div>
+          <div id="manual-challenge-list" class="challenge-list" aria-live="polite"></div>
+          <div class="action-row"><span>把同一份输出粘到对应输入框后计算</span><button id="manual-analyze" class="button primary" type="button">计算归因概率</button></div>
+        </section>
+
+        <div id="test-message" class="message" hidden></div>
+        <section id="manual-result" class="result-panel" hidden aria-live="polite"></section>
+      </section>
+
+      <section id="workspace-library" class="workspace">
+        <div class="page-header"><h1>指纹库管理</h1></div>
+
+        <section class="form-panel git-panel">
+          <div class="form-heading"><strong>GitHub 自动更新</strong><span>定期检查 origin/main，安全时自动快进并重载指纹库；本地改动冲突时会阻止并提示</span></div>
+          <div class="git-status-grid" id="git-status-grid">
+            <div><span>当前提交</span><strong id="git-head">—</strong></div>
+            <div><span>远端提交</span><strong id="git-remote">—</strong></div>
+            <div><span>落后</span><strong id="git-behind">—</strong></div>
+            <div><span>上次检查</span><strong id="git-last-check">—</strong></div>
+            <div><span>上次更新</span><strong id="git-last-update">—</strong></div>
+          </div>
+          <div id="git-message" class="message" hidden></div>
+          <div id="git-conflicts" class="git-conflicts" hidden></div>
+          <div class="form-footer git-footer">
+            <label class="git-auto-toggle"><input id="git-auto-enabled" type="checkbox"> 自动更新，间隔</label>
+            <input id="git-interval" type="number" min="1" step="1" value="24" class="git-interval-input">
+            <span class="git-interval-unit">小时</span>
+            <button id="git-save-settings" class="button secondary" type="button">保存设置</button>
+            <span class="git-footer-spacer"></span>
+            <button id="git-check" class="button secondary" type="button">检查更新</button>
+            <button id="git-update" class="button primary" type="button">立即更新</button>
+          </div>
+        </section>
+
+        <section class="inventory-panel simple-inventory">
+          <div class="form-heading library-heading">
+            <div class="library-actions">
+              <label class="bank-picker"><span>指纹库</span><select id="bank-select">{% for bank_id, item in banks.items() %}<option value="{{ bank_id }}"{% if bank_id == default_bank_id %} selected{% endif %}>{{ item.label }}</option>{% endfor %}</select></label>
+              <button id="show-create-bank" class="button secondary" type="button">新建指纹库</button>
+              <button id="delete-bank" class="button secondary danger-button" type="button" hidden>删除此自定义库</button>
+            </div>
+          </div>
+          <form id="create-bank-form" class="form-panel compact-form" hidden>
+            <label><span>指纹库名称</span><input id="new-bank-name" required placeholder="例如 Llama"></label>
+            <button class="button primary" type="submit">创建</button>
+          </form>
+          <div class="bank-source-note" id="bank-source-note"></div>
+          <div id="bank-inventory" class="fingerprint-list"></div>
+        </section>
+
+        <section class="form-panel">
+          <div class="form-heading"><strong>新建指纹</strong><span>为选中的指纹库添加模型指纹</span></div>
+          <div class="mode-tabs enroll-tabs" role="tablist" aria-label="录入方式">
+            <button class="mode-tab active" data-enroll-mode="api" type="button">API 自动采集</button>
+            <button class="mode-tab" data-enroll-mode="paste" type="button">手动粘贴</button>
+          </div>
+          <form id="auto-enrollment" class="enroll-panel active">
+            <div class="form-grid two">
+              <label><span>Base URL</span><input id="api-base" required placeholder="https://example.com/v1"></label>
+              <label><span>接口模型名</span><input id="api-model" required placeholder="实际请求使用的模型名"></label>
+              <label><span>API Key</span><input id="api-key" type="password" required autocomplete="off"></label>
+              <label><span>指纹名称</span><input id="auto-model" list="model-options" required placeholder="例如 model-version-name"></label>
+              <label><span>采集回答数</span><input id="sample-count" type="number" min="3" max="36" value="36" required></label>
+              <label><span>温度（可选）</span><input id="temperature" type="number" min="0" max="2" step="0.1" placeholder="接口默认"></label>
+            </div>
+            <div class="form-footer"><span>采集期间请保持页面打开，36 条约需数十分钟</span><button class="button primary" type="submit">自动采集并建立指纹</button></div>
+          </form>
+          <form id="paste-enrollment" class="enroll-panel">
+            <div class="form-grid one">
+              <label><span>指纹名称</span><input id="paste-model" required placeholder="例如 model-version-name"></label>
+              <label class="wide"><span>模型输出（多条用单独一行 ===OUTPUT=== 分隔）</span><textarea id="paste-outputs" required placeholder="粘贴同一模型对挑战的完整回答"></textarea></label>
+            </div>
+            <div class="form-footer"><button class="button primary" type="submit">录入指纹库</button></div>
+          </form>
+        </section>
+
+        <div id="enrollment-message" class="message" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <datalist id="model-options">{% for model in bank.models %}<option value="{{ model.id }}">{% endfor %}</datalist>
+  <script>window.BANK_SUMMARIES = {{ banks | tojson }}; window.UNIFIED_SUMMARY = {{ unified | tojson }}; window.DEFAULT_BANK_ID = {{ default_bank_id | tojson }};</script>
+  <script src="{{ url_for('static', filename='studio.js') }}?v=20261003-6"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+.env
+.env.*
+*.zip
+work/
+private-config.json
+recovered-providers.json
+*私人*
+*private*.html
+data/providers.json
+data/app_settings.json
